@@ -1,0 +1,166 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@inject ILogger<Home> Logger
+
+@using BaseUtils.Models
+@using BaseUtils.Utils
+@using Blazored.TextEditor
+@using System.Text.Json
+@* Pdf *@
+@using DinkToPdf;
+@using DinkToPdf.Contracts;
+
+@* word *@
+@using DocumentFormat.OpenXml.Packaging;
+@using HtmlToOpenXml;
+
+
+@inject IJSRuntime JSRuntime
+<p><a href="https://github.com/lunet-io/scriban">Scriban: </a>, a fast, powerful, safe and lightweight text templating language and engine for .NET.</p>
+<form name="home-fm" >
+    <AntiforgeryToken/>
+    <div class="row g-3">
+
+        <div class="col-12">
+            <label for="model">The Model (valid json)</label>
+            <InputTextArea class="form-control" @bind-Value="Model!.Model" rows="10"></InputTextArea>
+        </div>
+
+        <div class="col-6">
+            <label for="template">Scriban Template (<a href="https://github.com/lunet-io/scriban/tree/master/doc"> docs</a>)</label>
+            <InputTextArea class="form-control" @bind-Value="Model!.Template" rows="10"></InputTextArea>
+        </div>
+
+        <div class="col-6">
+            <label for="output">Output</label>
+            <InputTextArea class="form-control" @bind-Value="ModelOut!.Output" rows="10"></InputTextArea>
+        </div>
+        <div class="col-6">
+            <label for="output">Output Error</label>
+            <InputTextArea class="form-control" @bind-Value="ModelOut!.ErrorOutput" rows="4"></InputTextArea>
+        </div>
+
+        <div class="col-12">
+            <button type="button" @onclick="Submit">Map ModelJson ->Output </button>
+            <button type="button" @onclick="GenPdf">PDF </button>
+            <button type="button" @onclick="GenWord">Word </button>
+        </div>
+      
+    </div>
+</form>
+
+@code {
+    [SupplyParameterFromForm]
+    public BaseInput? Model { get; set; }
+    [SupplyParameterFromForm]
+    public BaseOutInput? ModelOut { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Model ??= new BaseInput()
+            {
+                Model = "{ \"name\" : \"Bob Smith\", \"address\" : \"1 Smith St Smithville\", \"orderId\" : \"123455\", \"total\" : 23435.34, \"items\" : [ { \"name\" : \"1kg carrots\", \"quantity\" : 1, \"total\" : 4.99 }, { \"name\" : \"2L Milk\", \"quantity\" : 1, \"total\" : 3.5 } ] }",
+                Template = "Dear {{ model.name }},\n" +
+                "\n" +
+                "Your order, {{ model.orderId}}, is now ready to be collected.\n" +
+                "\n" +
+                "Your order shall be delivered to {{ model.address }}.  If you need it delivered to another location, please contact as ASAP.\n" +
+                "\n" +
+                "Order: {{ model.orderId}}\n" +
+                "Total: {{ model.total | math.format \"c\" \"en-US\" }}\n" +
+                "\n" +
+                "Items:\n" +
+                "------\n" +
+                "{{- for item in model.items }}\n" +
+                " * {{ item.quantity }} x {{ item.name }} - {{ item.total | math.format \"c\" \"en-US\" }}\n" +
+                "{{- end }}\n" +
+                "\n" +
+                "Thanks,\n" +
+                "BuyFromUs",
+            };
+        ModelOut ??= new BaseOutInput();
+    }
+
+    public void Submit()
+    {
+        ModelOut.ErrorOutput = null;
+        ModelOut.Output = null;
+        ModelOut.Output = Generate(Model.Model, Model.Template);
+        //ModelOut.ErrorOutput = Model.Template;
+        //Logger.LogInformation("Id = {Id}", Model?.Template);
+    }
+
+    private string Generate(string model, string template)
+    {
+        return Generate((object?)JsonSerializer.Deserialize<JsonElement>(model) ?? new { }, template);
+    }
+
+    private string Generate(object model, string template)
+    {
+        try
+        {
+            return ScribanUtils.Render(template, new { model });
+        }
+        catch (Exception e)
+        {
+            ModelOut.ErrorOutput=e?.ToString();
+            return "";
+        }
+    }
+    private async Task GenPdf()
+    {
+        //var converter = new SynchronizedConverter(new PdfTools());
+        var converter = new BasicConverter(new PdfTools());
+        var doc = new HtmlToPdfDocument()
+            {
+                GlobalSettings = {
+                ColorMode = ColorMode.Color,
+                Orientation = Orientation.Portrait,
+                PaperSize = PaperKind.A4,
+            },
+                Objects = {
+                new ObjectSettings() {
+                    PagesCount = true,
+                    HtmlContent = ModelOut.Output?.Replace("\n","</br>"),
+                    WebSettings = { DefaultEncoding = "utf-8" },
+                },
+            }
+            };
+
+        byte[] pdf = converter.Convert(doc);
+
+        // Gọi hàm JavaScript để tải xuống file
+        await JSRuntime.InvokeVoidAsync("downloadFileFromStream", "output.pdf", pdf);
+    }
+
+    private async Task GenWord()
+    {
+        using (var memoryStream = new MemoryStream())
+        {
+            // Tạo tài liệu Word trong MemoryStream
+            using (WordprocessingDocument wordDocument = WordprocessingDocument.Create(memoryStream, DocumentFormat.OpenXml.WordprocessingDocumentType.Document, true))
+            {
+                MainDocumentPart mainPart = wordDocument.AddMainDocumentPart();
+                mainPart.Document = new DocumentFormat.OpenXml.Wordprocessing.Document();
+                var converter = new HtmlConverter(mainPart);
+                var body = mainPart.Document.Body = new DocumentFormat.OpenXml.Wordprocessing.Body();
+                await converter.ParseHtml(ModelOut.Output?.Replace("\n", "<br>"));
+                mainPart.Document.Save();
+            }
+
+            // Đặt lại vị trí của MemoryStream về đầu
+            memoryStream.Position = 0;
+
+            // Chuyển đổi MemoryStream thành một array byte để truyền tới client
+            var byteArray = memoryStream.ToArray();
+           // var base64String = Convert.ToBase64String(byteArray);
+
+            // Gọi JavaScript để tải file về client
+            await JSRuntime.InvokeVoidAsync("downloadFileFromStream", "output.docx", byteArray);
+        }
+    }
+    private async Task GenExcel()
+    {
+       
+    }
+}
