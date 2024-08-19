@@ -59,24 +59,8 @@
     {
         Model ??= new BaseInput()
             {
-                Model = "{ \"name\" : \"Bob Smith\", \"address\" : \"1 Smith St Smithville\", \"orderId\" : \"123455\", \"total\" : 23435.34, \"items\" : [ { \"name\" : \"1kg carrots\", \"quantity\" : 1, \"total\" : 4.99 }, { \"name\" : \"2L Milk\", \"quantity\" : 1, \"total\" : 3.5 } ] }",
-                Template = "Dear {{ model.name }},\n" +
-                "\n" +
-                "Your order, {{ model.orderId}}, is now ready to be collected.\n" +
-                "\n" +
-                "Your order shall be delivered to {{ model.address }}.  If you need it delivered to another location, please contact as ASAP.\n" +
-                "\n" +
-                "Order: {{ model.orderId}}\n" +
-                "Total: {{ model.total | math.format \"c\" \"en-US\" }}\n" +
-                "\n" +
-                "Items:\n" +
-                "------\n" +
-                "{{- for item in model.items }}\n" +
-                " * {{ item.quantity }} x {{ item.name }} - {{ item.total | math.format \"c\" \"en-US\" }}\n" +
-                "{{- end }}\n" +
-                "\n" +
-                "Thanks,\n" +
-                "BuyFromUs",
+                Model = "{\"options\":{\"showTable\":true,\"showH1\":false},\"dataView\":{\"name\":\"Bob Smith\",\"address\":\"1 Smith St Smithville\",\"cardNum\":1234567.123,\"listData\":[{\"name\":\"1kg carrots\",\"quantity\":1,\"total\":4.99},{\"name\":\"2L Milk\",\"quantity\":1,\"total\":3.5}]}}",
+                Template = "<html>\n   <body>\n      Name: {{ if model.options.showH1 }} \n      <h1>{{model.dataView.name}}</h1>\n      {{else}}\n      <p>{{model.dataView.name}}</p>\n      {{end}} address: {{model.dataView.address}} cardNum: {{model.dataView.cardNum | math.format 'c' 'en-US' }} {{ if model.options.showTable}}\n      <table>\n         <tr>\n            <th>Name</th>\n            <th>quantity</th>\n            <th>total</th>\n         </tr>\n       {{ for item in model.dataView.listData }}         <tr>\n            <td>{{ item.name }}</td>\n            <td>{{ item.quantity }}</td>\n            <td>{{ item.total | math.format 'c' 'en-US' }}</td>\n         </tr>\n         {{ end }}\n           </table>\n      {{end}}\n   </body>\n</html>",
             };
         ModelOut ??= new BaseOutInput();
     }
